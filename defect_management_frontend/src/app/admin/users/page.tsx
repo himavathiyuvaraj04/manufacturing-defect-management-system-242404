@@ -25,9 +25,7 @@ export default function AdminUsersPage() {
       <div className="py-6 grid gap-4">
         <div>
           <h1 className="h1">Admin / Users</h1>
-          <p className="subtle mt-1">
-            List users and set roles (admin-only).
-          </p>
+          <p className="subtle mt-1">List users and set roles (admin-only).</p>
         </div>
 
         <ErrorBanner error={error} />
