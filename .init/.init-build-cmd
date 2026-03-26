@@ -1,0 +1,4 @@
+{
+    "command": "npm install && npm run lint && npm run build",
+    "working_directory": "/home/kavia/workspace/code-generation/manufacturing-defect-management-system-242404/defect_management_frontend"
+}
