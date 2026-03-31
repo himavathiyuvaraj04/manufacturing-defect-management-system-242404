@@ -1,6 +1,10 @@
 import { getToken } from "./auth";
 
-const DEFAULT_BASE_URL = "http://localhost:3001";
+/**
+ * Default backend base URL for local/preview environments.
+ * Backend is expected to be reachable on port 8000 unless overridden.
+ */
+const DEFAULT_BASE_URL = "http://localhost:8000";
 
 /**
  * API base URL for backend.
@@ -36,9 +40,16 @@ async function request<T>(
   path: string,
   options: RequestInit & { isMultipart?: boolean } = {}
 ): Promise<T> {
-  const token = getToken();
   const headers = new Headers(options.headers || {});
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  // Attach JWT for protected endpoints. Avoid attaching to auth endpoints.
+  // This keeps the auth flow predictable and aligns with backend expectations
+  // (Authorization: Bearer <token> only when required).
+  const isAuthEndpoint = path.startsWith("/auth/login") || path.startsWith("/auth/register");
+  if (!isAuthEndpoint) {
+    const token = getToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
 
   // For JSON requests, default content-type.
   if (!options.isMultipart && !headers.has("Content-Type")) {
