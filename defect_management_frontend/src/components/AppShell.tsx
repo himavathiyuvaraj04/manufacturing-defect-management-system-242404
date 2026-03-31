@@ -59,8 +59,10 @@ export function AppShell({
               <NavItem href="/defects/new" label="Log Defect" />
               <NavItem href="/defects" label="Defects" />
               <NavItem href="/actions" label="Actions" />
-              <NavItem href="/audit" label="Audit" />
+              <NavItem href="/export" label="Export" />
+              <NavItem href="/admin/config" label="Config" />
               <NavItem href="/admin" label="Admin" />
+              <NavItem href="/audit" label="Audit" />
             </nav>
           </div>
 

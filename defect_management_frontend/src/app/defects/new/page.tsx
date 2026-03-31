@@ -6,6 +6,8 @@ import { Card, ErrorBanner, FieldRow } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import Link from "next/link";
+import { SetupGuide } from "@/components/SetupGuide";
 
 type Option = { id: string; code?: string; name?: string };
 
@@ -75,6 +77,12 @@ export default function NewDefectPage() {
     };
   }, []);
 
+  const missingConfig =
+    defectTypes.length === 0 || lines.length === 0 || shifts.length === 0;
+
+  const canCreate =
+    !missingConfig && !saving && defectTypeId && productionLineId && shiftId;
+
   return (
     <AppShell>
       <div className="py-6 grid gap-4" style={{ maxWidth: 820 }}>
@@ -92,6 +100,25 @@ export default function NewDefectPage() {
         </div>
 
         <ErrorBanner error={error} />
+
+        {missingConfig ? (
+          <SetupGuide
+            title="Setup needed before logging defects"
+            description="This form relies on master data. Add at least 1 defect type, 1 production line, and 1 shift."
+            steps={[
+              { label: "Open Admin → Config", href: "/admin/config" },
+              { label: "Add defect types" },
+              { label: "Add production lines" },
+              { label: "Add shifts" },
+              { label: "Return here to log the first defect" },
+            ]}
+            actions={
+              <Link className="btn btn-primary" href="/admin/config">
+                Go to Admin Config
+              </Link>
+            }
+          />
+        ) : null}
 
         <Card
           title="Defect Entry"
@@ -146,11 +173,15 @@ export default function NewDefectPage() {
             </FieldRow>
 
             <div className="grid-3">
-              <FieldRow label="Defect type">
+              <FieldRow
+                label="Defect type"
+                hint={defectTypes.length === 0 ? "No defect types configured." : undefined}
+              >
                 <select
                   className="select"
                   value={defectTypeId}
                   onChange={(e) => setDefectTypeId(e.target.value)}
+                  disabled={defectTypes.length === 0}
                 >
                   <option value="">— Select —</option>
                   {defectTypes.map((d) => (
@@ -161,11 +192,15 @@ export default function NewDefectPage() {
                 </select>
               </FieldRow>
 
-              <FieldRow label="Production line">
+              <FieldRow
+                label="Production line"
+                hint={lines.length === 0 ? "No production lines configured." : undefined}
+              >
                 <select
                   className="select"
                   value={productionLineId}
                   onChange={(e) => setProductionLineId(e.target.value)}
+                  disabled={lines.length === 0}
                 >
                   <option value="">— Select —</option>
                   {lines.map((l) => (
@@ -176,11 +211,12 @@ export default function NewDefectPage() {
                 </select>
               </FieldRow>
 
-              <FieldRow label="Shift">
+              <FieldRow label="Shift" hint={shifts.length === 0 ? "No shifts configured." : undefined}>
                 <select
                   className="select"
                   value={shiftId}
                   onChange={(e) => setShiftId(e.target.value)}
+                  disabled={shifts.length === 0}
                 >
                   <option value="">— Select —</option>
                   {shifts.map((s) => (
@@ -231,11 +267,12 @@ export default function NewDefectPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 className="btn btn-primary"
-                disabled={saving}
+                disabled={!canCreate}
                 onClick={async () => {
                   try {
                     setSaving(true);
                     setError(null);
+
                     const form = new FormData();
                     form.append("occurred_at", occurredAtIso);
                     if (partNumber.trim()) form.append("part_number", partNumber.trim());
@@ -264,6 +301,14 @@ export default function NewDefectPage() {
               <button className="btn btn-outline" onClick={() => router.push("/")}>
                 Cancel
               </button>
+
+              {!canCreate ? (
+                <span className="subtle">
+                  {missingConfig
+                    ? "Complete config first."
+                    : "Select defect type, production line, and shift."}
+                </span>
+              ) : null}
             </div>
           </div>
         </Card>

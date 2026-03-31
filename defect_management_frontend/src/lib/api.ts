@@ -135,6 +135,24 @@ export const api = {
   async listShifts() {
     return request<Array<Record<string, unknown>>>("/config/shifts");
   },
+  async createShift(code: string, name?: string) {
+    const body = new URLSearchParams();
+    body.set("code", code);
+    if (name) body.set("name", name);
+    return request<Record<string, unknown>>("/config/shifts", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+  },
+
+  /**
+   * Severity rules (optional). If backend doesn't expose these, callers should handle errors.
+   * This is used only for first-run “what’s configured?” affordances.
+   */
+  async listSeverityRules() {
+    return request<Array<Record<string, unknown>>>("/config/severity-rules");
+  },
 
   /** Defects */
   async listDefects(params: Record<string, string | undefined>) {

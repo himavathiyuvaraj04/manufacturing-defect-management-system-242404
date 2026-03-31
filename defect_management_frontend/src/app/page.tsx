@@ -5,7 +5,11 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { Card, ErrorBanner, FieldRow } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { DashboardOverdueResponse, ParetoItem, TrendPoint } from "@/lib/types";
+import type {
+  DashboardOverdueResponse,
+  ParetoItem,
+  TrendPoint,
+} from "@/lib/types";
 import { endOfDay, format, startOfDay, subDays } from "date-fns";
 import {
   Bar,
@@ -19,9 +23,18 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { SetupGuide } from "@/components/SetupGuide";
+import { getToken } from "@/lib/auth";
 
 function iso(dt: Date) {
   return dt.toISOString();
+}
+
+function isUnauthorized(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  if (typeof status === "number") return status === 401 || status === 403;
+  const msg = (err as { message?: string })?.message || "";
+  return /401|403|unauthorized|forbidden/i.test(msg);
 }
 
 export default function DashboardPage() {
@@ -29,6 +42,13 @@ export default function DashboardPage() {
   const [overdue, setOverdue] = useState<DashboardOverdueResponse | null>(null);
   const [pareto, setPareto] = useState<ParetoItem[]>([]);
   const [trends, setTrends] = useState<TrendPoint[]>([]);
+  const [configHint, setConfigHint] = useState<{
+    defectTypes: number;
+    lines: number;
+    shifts: number;
+  } | null>(null);
+
+  const token = getToken();
 
   const [start, setStart] = useState(() =>
     format(subDays(new Date(), 30), "yyyy-MM-dd")
@@ -52,6 +72,22 @@ export default function DashboardPage() {
     async function load() {
       try {
         setError(null);
+
+        // Lightweight "is the system configured?" check:
+        // this enables a better first-run UX when charts are empty.
+        const [dt, pl, sh] = await Promise.all([
+          api.listDefectTypes(),
+          api.listProductionLines(),
+          api.listShifts(),
+        ]);
+        if (!cancelled) {
+          setConfigHint({
+            defectTypes: (dt as Array<unknown>).length,
+            lines: (pl as Array<unknown>).length,
+            shifts: (sh as Array<unknown>).length,
+          });
+        }
+
         const [o, p, t] = await Promise.all([
           api.dashboardOverdue(),
           api.dashboardPareto({ start: startIso, end: endIso, limit: "10" }),
@@ -72,6 +108,12 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [startIso, endIso, period]);
+
+  const missingConfig =
+    !!configHint &&
+    (configHint.defectTypes === 0 ||
+      configHint.lines === 0 ||
+      configHint.shifts === 0);
 
   return (
     <AppShell>
@@ -124,13 +166,91 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {isUnauthorized(error) ? (
+          <SetupGuide
+            title="Login required"
+            description="Your session is missing/expired, or your account doesn’t have access to one or more endpoints."
+            steps={[
+              {
+                label: "Login",
+                href: "/login",
+                hint: "If this is a fresh database, create the first account via Register",
+              },
+              {
+                label: "Register first account (bootstrap admin)",
+                href: "/register",
+                hint: "The backend promotes the first created user to admin automatically",
+              },
+            ]}
+            actions={
+              <div className="flex items-center gap-2">
+                <Link className="btn btn-primary" href="/login">
+                  Go to login
+                </Link>
+                <Link className="btn btn-outline" href="/register">
+                  Register
+                </Link>
+              </div>
+            }
+          />
+        ) : null}
+
         <ErrorBanner error={error} />
 
+        {!token ? (
+          <SetupGuide
+            title="Get started"
+            description="This app uses JWT login. On a fresh database, you must create the first account."
+            steps={[
+              {
+                label: "Register the first account",
+                href: "/register",
+                hint: "First user becomes admin automatically (bootstrap)",
+              },
+              { label: "Login", href: "/login" },
+              {
+                label: "Configure defect types, production lines, and shifts",
+                href: "/admin/config",
+              },
+              { label: "Log a defect", href: "/defects/new" },
+              {
+                label: "Open the defect to add RCA and corrective actions",
+                href: "/defects",
+              },
+              { label: "Export reports", href: "/export" },
+            ]}
+            actions={
+              <div className="flex items-center gap-2 flex-wrap">
+                <Link className="btn btn-primary" href="/register">
+                  Register
+                </Link>
+                <Link className="btn btn-outline" href="/login">
+                  Login
+                </Link>
+              </div>
+            }
+          />
+        ) : null}
+
+        {missingConfig ? (
+          <SetupGuide
+            title="Configuration is incomplete"
+            description={`Detected: defect types=${configHint?.defectTypes ?? 0}, lines=${configHint?.lines ?? 0}, shifts=${configHint?.shifts ?? 0}. Add at least 1 of each to make defect logging and charts meaningful.`}
+            steps={[
+              { label: "Open Admin → Config", href: "/admin/config" },
+              { label: "Add a defect type, production line, and shift" },
+              { label: "Log your first defect", href: "/defects/new" },
+            ]}
+            actions={
+              <Link className="btn btn-primary" href="/admin/config">
+                Complete setup
+              </Link>
+            }
+          />
+        ) : null}
+
         <div className="grid-3">
-          <Card
-            title="Overdue Actions"
-            subtitle="Auto-updated based on due date"
-          >
+          <Card title="Overdue Actions" subtitle="Auto-updated based on due date">
             <div className="flex items-baseline justify-between">
               <div className="text-4xl font-extrabold">
                 {overdue?.overdue_actions ?? "—"}
@@ -159,9 +279,24 @@ export default function DashboardPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="subtle mt-2">
-              Use Admin → Config to add defect types.
-            </div>
+
+            {pareto.length === 0 ? (
+              <div className="subtle mt-2">
+                No Pareto data in this range yet.{" "}
+                <Link className="underline" href="/defects/new">
+                  Log a defect
+                </Link>{" "}
+                and ensure defect types exist in{" "}
+                <Link className="underline" href="/admin/config">
+                  Admin → Config
+                </Link>
+                .
+              </div>
+            ) : (
+              <div className="subtle mt-2">
+                Use Admin → Config to add defect types.
+              </div>
+            )}
           </Card>
 
           <Card
@@ -183,6 +318,16 @@ export default function DashboardPage() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+
+            {trends.length === 0 ? (
+              <div className="subtle mt-2">
+                No trend data in this range yet. Try expanding the date range or{" "}
+                <Link className="underline" href="/defects/new">
+                  log a defect
+                </Link>
+                .
+              </div>
+            ) : null}
           </Card>
         </div>
 
@@ -198,30 +343,52 @@ export default function DashboardPage() {
           >
             <ul className="grid gap-2 subtle">
               <li>
-                1) Log defect (optional photo) → 2) Capture RCA (5-Why/Fishbone)
-                → 3) Assign corrective actions
+                1) Log defect → 2) Capture RCA (5-Why/Fishbone) → 3) Assign
+                corrective actions
               </li>
-              <li>Use Export to download PDF/CSV reports for audits.</li>
-              <li>Use Audit view to review entity changes.</li>
+              <li>
+                <Link className="underline" href="/export">
+                  Export
+                </Link>{" "}
+                to download PDF/CSV reports for audits.
+              </li>
+              <li>
+                <Link className="underline" href="/audit">
+                  Audit
+                </Link>{" "}
+                to review entity changes (manager/admin).
+              </li>
             </ul>
           </Card>
 
-          <Card
-            title="Compliance Notes"
-            subtitle="Workflow enforcement guidance"
-          >
+          <Card title="Recommended first-run path" subtitle="Fresh database setup">
             <ul className="grid gap-2 subtle">
               <li>
-                Defects can be created with or without photo; you can also upload
-                a photo later.
+                Create first user:{" "}
+                <Link className="underline" href="/register">
+                  Register
+                </Link>{" "}
+                (bootstrap admin) →{" "}
+                <Link className="underline" href="/login">
+                  Login
+                </Link>
               </li>
               <li>
-                RCA capture is supported as an upsert; method must be “5-Why” or
-                “Fishbone”.
+                Configure master data in{" "}
+                <Link className="underline" href="/admin/config">
+                  Admin → Config
+                </Link>{" "}
+                (defect types, lines, shifts)
               </li>
               <li>
-                Corrective actions support status updates; “Overdue” is computed
-                server-side.
+                Validate end-to-end:{" "}
+                <Link className="underline" href="/defects/new">
+                  Create defect
+                </Link>{" "}
+                → open defect → save RCA → add action → revisit dashboard →{" "}
+                <Link className="underline" href="/export">
+                  export
+                </Link>
               </li>
             </ul>
           </Card>
